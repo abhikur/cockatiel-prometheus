@@ -50,23 +50,19 @@ export default class CockatielPrometheus {
     }
     const circuitBreakerPolicy = this._circuitBreakers[methodName].wrapped[1]
     circuitBreakerPolicy.onHalfOpen(() => {
-      console.log('Half open state...')
       this._counter.labels(methodName, 'halfOpen', this._options.application).set(1)
     })
 
     circuitBreakerPolicy.onBreak(() => {
-      console.log('Circuit is open...')
       this._counter.labels(methodName, 'open', this._options.application).set(1)
     })
 
     circuitBreakerPolicy.onReset(() => {
-      console.log('Circuit is resetting...')
       this._counter.labels(methodName, 'halfOpen', this._options.application).set(0)
       this._counter.labels(methodName, 'open', this._options.application).set(0)
     })
 
     circuitBreakerPolicy.onSuccess(() => {
-      console.log('Circuit is close...')
       this._counter.labels(methodName, 'closed', this._options.application).set(1)
     })
     return this._circuitBreakers[methodName]
