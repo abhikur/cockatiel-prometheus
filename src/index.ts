@@ -16,8 +16,10 @@ import {
 } from 'cockatiel'
 
 type PrometheusMetricsOptions = {
-  metricPrefix?: string
   application: string
+  metricPrefix?: string
+  maxAttempts?: number
+  halfOpenAfter?: number;
 }
 
 export type CircuitBreakerType = IMergedPolicy<IRetryContext, RetryPolicy["_altReturn"], RetryPolicy extends IMergedPolicy<any, any, infer W> ? [RetryPolicy, ...W] : [RetryPolicy, RetryPolicy]> | IMergedPolicy<IDefaultPolicyContext, CircuitBreakerPolicy["_altReturn"], CircuitBreakerPolicy extends IMergedPolicy<any, any, infer W> ? [CircuitBreakerPolicy, ...W] : [CircuitBreakerPolicy, CircuitBreakerPolicy]>
@@ -29,6 +31,8 @@ export default class CockatielPrometheus {
   private _options: PrometheusMetricsOptions;
   private _circuitBreakers: {[key: string]: any};
   private _counter: Gauge;
+  private _retryPolicy: RetryPolicy;
+  private _circuitBreakerPolicy: CircuitBreakerPolicy;
   constructor (options: PrometheusMetricsOptions) {
     this._registry = client.register;
     this._metricPrefix = options.metricPrefix || ``;
@@ -41,12 +45,16 @@ export default class CockatielPrometheus {
       registers: [this._registry],
       labelNames: ['name', 'event', 'application']
     });
+    this._retryPolicy = retry(handleAll, { maxAttempts: options.maxAttempts || 3, backoff: new ExponentialBackoff() });
+    this._circuitBreakerPolicy = circuitBreaker(handleAll, {
+      halfOpenAfter: (options.halfOpenAfter || 2) * 1000,
+      breaker: new ConsecutiveBreaker(3),
+    });
   }
 
   add (methodName: string): CircuitBreakerType {
     if (!this._circuitBreakers[methodName]) {
-      const [retryPolicy, circuitBreakerPolicy] = this.createCircuitBreakerInstance()
-      this._circuitBreakers[methodName] = wrap(retryPolicy, circuitBreakerPolicy);
+      this._circuitBreakers[methodName] = wrap(this._retryPolicy, this._circuitBreakerPolicy);
     }
     const circuitBreakerPolicy = this._circuitBreakers[methodName].wrapped[1]
     circuitBreakerPolicy.onHalfOpen(() => {
@@ -66,15 +74,6 @@ export default class CockatielPrometheus {
       this._counter.labels(methodName, 'closed', this._options.application).set(1)
     })
     return this._circuitBreakers[methodName]
-  }
-
-  createCircuitBreakerInstance(): (RetryPolicy|CircuitBreakerPolicy)[] {
-    const retryPolicy = retry(handleAll, { maxAttempts: 10, backoff: new ExponentialBackoff() });
-    const circuitBreakerPolicy = circuitBreaker(handleAll, {
-      halfOpenAfter: 2 * 1000,
-      breaker: new ConsecutiveBreaker(3),
-    });
-    return [retryPolicy, circuitBreakerPolicy];
   }
 
   clear () {
