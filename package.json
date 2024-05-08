@@ -1,6 +1,6 @@
 {
   "name": "cockatiel-prometheus",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "Integration of prometheus exporter with cockatiel circuit breaker library.",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
