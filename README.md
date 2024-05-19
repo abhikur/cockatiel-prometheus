@@ -1,40 +1,44 @@
-# cockatiel-prometheus
+# cockatiel-prometheus - Prometheus metrics for cockatiel circuit breakers
 
 ### What is cockatiel-prometheus ?
-cockatiel-prometheus is an integration between cockatiel and prometheus. This helps you to collect the circuit breaker logs which are coming from the cockatiel events and export them to your prometheus server.
+This module provides Prometheus metrics for cockatiel circuit breakers. 
 
 ### How to Use it ?
+Create an instance of CockatielPrometheus like below:
+
+```export const cockatielPrometheus = new CockatielPrometheus({ application: 'your-service-name' })```
+
+and then add your circuit breaker through its add method like below:
+
+```cockatielPrometheus.add('async-function-name', you-cockatiel-circuit-breaker-policy)```
+
+_Note:_ _Please pass the circuit breaker policy to add method provided by cockatiel library_
+
+and to expose the metrics, you can use the following code:
+
+```await cockatielPrometheus.metrics()```
+
+That's it. You are done. Now you can see the metrics in your Prometheus server.
+
+### Example
 
 ```typescript
-import CockatielPrometheus, {CircuitBreakerType} from "./index";
+import CockatielPrometheus from "./index";
+import { circuitBreaker, retry, wrap } from 'cockatiel'
+
+const yourServiceCircuitBreakerPolicy = circuitBreaker(handleAll, {
+  halfOpenAfter: 5 * 1000,
+  breaker: new ConsecutiveBreaker(3),
+})
+
+const yourServiceRetryPolicy = retry(handleAll, { maxAttempts: 10, backoff: new ExponentialBackoff() })
 
 let cockatielPrometheus = new CockatielPrometheus({application: 'your-service-name'});
 
-let circuitBreaker: CircuitBreakerType = cockatielPrometheus.add('async-method-name');
+cockatielPrometheus.add('async-method-name', yourServiceCircuitBreakerPolicy);
+const yourServiceCB = wrap(yourServiceRetryPolicy, yourServiceCircuitBreakerPolicy)
 
+await yourServiceCB.execute(() => {
 // your async method
-const handleRequest = async (circuitBreaker: CircuitBreakerType) => {
-  async function delayedLogging(message: string, delay: number) {
-    await new Promise(resolve => setTimeout(resolve, delay));
-    console.log(message)
-  }
-
-  async function delayedError(errorMessage: string, delay: number) {
-    await new Promise(resolve => setTimeout(resolve, delay));
-    const error = new Error(errorMessage);
-    throw {...error, statusCode: 500};
-  }
-
-  await circuitBreaker.execute(() => {
-    if (Math.random() > 0.4) {
-      delayedError('Something went wrong', 2000)
-    } else {
-      delayedLogging('Site is working again', 2000)
-    }
-  })
-}
-
-// calling the method to see it working
-handleRequest(circuitBreaker).then(res => console.log(res))
-
+})
 ```
